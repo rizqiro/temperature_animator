@@ -72,6 +72,11 @@ h1{font-family:var(--cond);font-weight:600;font-size:clamp(1.5rem,3vw,2.1rem);ma
 button{font:inherit;cursor:pointer;border-radius:4px;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:7px 12px;line-height:1.1}
 button:hover{border-color:var(--muted)}
 button.primary{background:var(--btn);color:var(--btn-ink);border-color:var(--btn);min-width:78px;font-weight:600}
+/* Playback buttons/inputs get this automatically whenever script.js sets
+   their `.disabled` property true — which it does while "Multiple choice"
+   mode is on, since the chart those controls drive is busy showing the
+   comparison instead of the live animation. */
+button:disabled,input:disabled,select:disabled{opacity:.45;cursor:not-allowed}
 /* :focus-visible only shows the outline for keyboard users (Tab key), not
    for a mouse click — so mouse users don't see a "halo" they didn't ask for. */
 button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,summary:focus-visible,canvas:focus-visible{outline:2px solid var(--pos);outline-offset:2px}
@@ -111,25 +116,6 @@ canvas{display:block;width:100%}
 .adjuster{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;margin:10px 0 4px;font-size:.88rem;color:var(--muted)}
 .adjuster label{display:flex;align-items:center;gap:5px}
 .adjuster input[type=checkbox]{accent-color:var(--pos)}
-
-/* ---- 6. Column "chips" for picking data to compare (feature 4) --------
-   Each chip is a little toggle button, one per data column/position. You
-   click a chip to add or remove that column from the comparison chart. */
-.chiprow{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:10px 0}
-.chips{display:flex;flex-wrap:wrap;gap:6px;max-height:150px;overflow-y:auto;padding:8px;border:1px solid var(--line);border-radius:4px;background:var(--bg)}
-.chip{font:inherit;font-size:.82rem;cursor:pointer;border-radius:12px;border:1px solid var(--line);background:var(--panel);color:var(--muted);padding:3px 10px;line-height:1.4}
-.chip:hover{border-color:var(--muted);color:var(--ink)}
-/* When a chip is selected, script.js adds this class AND sets two of its
-   own CSS variables (--chip-c for colour) so every chip can have a unique
-   "this is my line's colour" highlight without needing hundreds of CSS
-   rules — one rule reads whatever colour JS put in the variable. */
-.chip.active{color:#fff;border-color:transparent;background:var(--chip-c, var(--pos))}
-.chiprow .ghostbtn{font-size:.82rem;padding:4px 9px}
-
-.comparewrap{margin-top:14px}
-.comparelegend{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:8px;font-size:.85rem;color:var(--muted)}
-.comparelegend .sw{border-radius:50%}
-.hint{color:var(--muted);font-size:.88rem;font-style:italic;padding:18px 0}
 
 #tip{position:fixed;left:0;top:0;pointer-events:none;background:var(--ink);color:var(--panel);font-size:.82rem;padding:6px 9px;border-radius:4px;opacity:0;z-index:10;white-space:nowrap;line-height:1.35}
 
