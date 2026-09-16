@@ -61,12 +61,12 @@
       <label>Max <input type="number" id="axisMaxInput" step="any"></label>
     </div>
 
-    <canvas id="profile" tabindex="0" aria-label="Bar chart of values at the current time"></canvas>
-    <div class="legend">
-      <span><span class="sw" style="background:var(--pos)"></span>Positive</span>
-      <span><span class="sw" style="background:var(--neg)"></span>Negative</span>
-      <span><span class="dash"></span>One step earlier</span>
-    </div>
+    <canvas id="profile" tabindex="0" aria-label="Bar chart of values at the current time, or of the moments being compared"></canvas>
+    <!-- script.js fills this in via updateProfileLegend(): the normal
+         Positive/Negative/One-step-earlier legend, or — while Multiple
+         choice mode is on — one coloured swatch per moment you've picked
+         from the Whole period map below. -->
+    <div class="legend" id="profileLegend"></div>
   </div>
 
   <!-- ======================================================================
@@ -76,7 +76,22 @@
        ====================================================================== -->
   <div class="stage section">
     <h2 style="margin-top:0">Whole period</h2>
-    <p class="note">Rows are times, columns are positions. Stronger colour means a larger value. Click a row to jump to that time.</p>
+    <!-- This text changes depending on whether "Multiple choice" is on —
+         see setCompareMode() in script.js. -->
+    <p class="note" id="heatNote">Rows are times, columns are positions. Stronger colour means a larger value. Click a row to jump to that time.</p>
+
+    <!-- Feature 4 (reworked): "Multiple choice" turns row-clicks on this
+         map from "jump to that time" into "add/remove this time from the
+         comparison". Selected rows get drawn as extra, semi-transparent
+         bar layers on the "Values at this time" chart above, instead of
+         a separate chart — so you compare several moments on the exact
+         same axes as the live view. Playback is paused and its controls
+         are disabled while this is on, since that chart is busy showing
+         the comparison instead of the animation. -->
+    <div class="row" style="margin-top:0">
+      <button type="button" id="multiBtn" aria-pressed="false">Multiple choice</button>
+    </div>
+
     <canvas id="heat" aria-label="Colour map of all times and positions"></canvas>
 
     <!-- Feature 5: colour pickers for the two ends of the colour scale.
@@ -88,23 +103,6 @@
       <span class="scaleGroup"><input type="color" id="colorMin" value="#c77a12" aria-label="Colour for the minimum (most negative) value"><span id="lmin"></span></span>
       <span class="grad" id="grad"></span>
       <span class="scaleGroup"><span id="lmax"></span><input type="color" id="colorMax" value="#1f6fb2" aria-label="Colour for the maximum (most positive) value"></span>
-    </div>
-
-    <!-- Feature 4: pick one or more columns/positions to compare on their
-         own line chart. Each button is a toggle ("chip"); script.js's
-         buildChips()/toggleCol() fill this box and react to clicks. -->
-    <h2>Compare positions</h2>
-    <p class="note">Tick any positions below to draw them as separate lines over the whole period, so you can compare their trends directly.</p>
-    <div class="chiprow">
-      <button type="button" class="ghostbtn" id="selAll">Select all</button>
-      <button type="button" class="ghostbtn" id="selClear">Clear</button>
-    </div>
-    <div class="chips" id="chips"></div>
-
-    <div class="comparewrap">
-      <canvas id="compare" aria-label="Line chart comparing chosen positions over the whole period" style="display:none"></canvas>
-      <div class="comparelegend" id="comparelegend"></div>
-      <p class="hint" id="hint">Pick one or more positions above to compare them here.</p>
     </div>
   </div>
 

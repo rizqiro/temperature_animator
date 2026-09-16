@@ -14,7 +14,7 @@ Every file is heavily commented, explaining not just what each part does but *wh
 
 - **Values at this time**: a bar chart that glides smoothly between time steps, with a dashed line for the previous step. The left axis has an **Auto** toggle — untick it to type your own min/max so the axis stays fixed instead of rescaling per dataset.
 - **Whole period**: a colour map (rows = times, columns = positions). Click a row to jump to that time. Two colour pickers next to the scale let you choose the colour for the maximum and minimum ends of the scale — changing them repaints the heat map *and* the bar chart, since both read the same shared colours.
-- **Compare positions**: tick any number of position "chips" under the heat map to draw them as separate coloured lines on their own chart, so you can compare several positions' trends over the whole period at once.
+- **Multiple choice**: click the **Multiple choice** button above the colour map to switch row-clicks from "jump to that time" to "add/remove this time from a comparison". Every picked row gets drawn as an extra, semi-transparent bar layer on the "Values at this time" chart, each in its own colour, stacked so the data behind is still visible. Playback pauses and its controls are disabled while comparing, since that chart is busy showing the comparison. Click **Stop comparing** to return to normal playback.
 
 Controls: play/pause, step buttons, time slider, speed. Keyboard: `Space` plays/pauses, `←` / `→` step through time.
 

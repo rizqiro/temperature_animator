@@ -63,7 +63,7 @@ let vmax = 1;         // the biggest absolute value in the data — used to size
 let t = 0;            // the "clock": a fractional row index, e.g. 3.4 means 40% of the way from row 3 to row 4
 let hold = 0;         // a short pause (in seconds) we sit on the last frame before looping back to the start
 let playing = !reduce, speed = 1, xname = 'Position', unit = '';
-let hoverIdx = -1, curVals = [], lastStep = -1, heatGeom = null, compareGeom = null;
+let hoverIdx = -1, curVals = [], lastStep = -1, heatGeom = null;
 let C = {}; // a cache of the current theme's CSS colours, refreshed every frame (see readTheme)
 
 /* --- Feature 3: axis adjuster state -----------------------------------
@@ -73,19 +73,27 @@ let C = {}; // a cache of the current theme's CSS colours, refreshed every frame
    axisMin/axisMax: the actual numbers currently used to draw the axis. */
 let axisAuto = true, axisMin = -1, axisMax = 1;
 
-/* --- Feature 4: "compare columns" state --------------------------------
-   selectedCols remembers which columns you've clicked "on" in the chip
-   list. We use a Set (a list that can't contain duplicates) so clicking a
-   chip twice cleanly adds-then-removes it. JavaScript Sets remember the
-   ORDER things were added, which is handy: it lets us always give the
-   first column you picked the first colour, the second column the second
-   colour, and so on, even if you pick them out of numeric order. */
-let selectedCols = new Set();
-/* A fixed list of easy-to-tell-apart colours for comparison lines. This is
-   deliberately different from --pos/--neg (which mean "big" vs "small"
-   value) — here, colour just means "which column is this line". If you
-   select more columns than colours, we simply start the list over again
-   (see the % in compareColor). */
+/* --- Feature 4: "Multiple choice" comparison state ----------------------
+   compareMode: false = the app behaves exactly like the original —
+   the bar chart animates, clicking a heat-map row jumps the clock there.
+   true = the bar chart instead shows one semi-transparent bar layer per
+   ROW you've picked, all stacked on the same axes so you can compare
+   several moments directly; clicking a heat-map row adds/removes it from
+   that comparison instead of jumping the clock, and playback is paused
+   and disabled because the chart is busy showing the comparison.
+   selectedRows remembers which row numbers (indexes into `rows`) are
+   currently picked. A Set can't hold duplicates, so clicking the same row
+   twice cleanly adds it then removes it, and — because JavaScript Sets
+   remember the ORDER items were added — the first row you pick always
+   keeps the first colour, the second row the second colour, and so on,
+   no matter what order you click them in. */
+let compareMode = false;
+let selectedRows = new Set();
+/* A fixed list of easy-to-tell-apart colours for the comparison overlay.
+   This is deliberately different from --pos/--neg (which mean "big" vs
+   "small" value) — here, colour just means "which picked moment is this".
+   If you pick more rows than colours, the list simply starts over (see
+   the % in compareColor). */
 const COMPARE_PALETTE = ['#8e44ad','#16a085','#c0392b','#2980b9','#d35400','#27ae60','#7f8c8d','#e67e22','#2c3e50','#f1c40f'];
 function compareColor(orderIndex){ return COMPARE_PALETTE[orderIndex % COMPARE_PALETTE.length]; }
 
@@ -174,66 +182,72 @@ function num(v){ const r = Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(1); ret
 function fmt(v){ return num(v) + (unit ? ' ' + unit : ''); }
 
 /* -----------------------------------------------------------------------
-   buildChips(): draws the little row of toggle buttons (one per column)
-   used by feature 4, "compare more than one position at once".
+   Feature 4 — "Multiple choice" comparison mode.
 
-   It throws away whatever chips existed before (from the previous
-   dataset) and builds a fresh one for every currently-visible column. This
-   runs once each time you load new data, not every animation frame — chip
-   buttons don't need to be redrawn 60 times a second, only when the list
-   of columns actually changes.
+   setCompareMode(on) is called when you click the "Multiple choice"
+   button. It flips every switch that mode needs:
+     - remembers the new mode in `compareMode`,
+     - relabels/re-styles the button so it's obvious whether it's on,
+     - rewrites the instructions above the heat map,
+     - pauses the animation and disables the playback controls (Play,
+       ◀ ▶, the slider, the speed picker) — turning them back on again if
+       you switch comparison off,
+     - clears any previous picks, since turning the mode on or off (or
+       loading a new dataset) always starts the comparison fresh,
+     - refreshes the little legend under the bar chart to match.
    ----------------------------------------------------------------------- */
-function buildChips(){
-  const box = $('chips');
-  box.innerHTML = '';
-  cols.forEach((c, i) => {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'chip';
-    b.textContent = String(c + 1);
-    b.setAttribute('aria-pressed', 'false');
-    b.title = `${xname} ${c + 1}`;
-    b.addEventListener('click', () => toggleCol(i, b));
-    box.appendChild(b);
-  });
-  updateCompareVisibility();
+function setCompareMode(on){
+  compareMode = on;
+  selectedRows.clear();
+  const btn = $('multiBtn');
+  btn.classList.toggle('primary', on);
+  btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  btn.textContent = on ? 'Stop comparing' : 'Multiple choice';
+  $('heatNote').textContent = on
+    ? 'Multiple choice is on: click one or more rows below to compare those moments on the "Values at this time" chart above. Click "Stop comparing" to go back to playback.'
+    : 'Rows are times, columns are positions. Stronger colour means a larger value. Click a row to jump to that time.';
+  if (on) setPlaying(false);
+  setPlaybackControlsEnabled(!on);
+  updateProfileLegend();
+}
+/* While comparing, the bar chart is busy showing the picked moments
+   instead of the live animation, so scrubbing time wouldn't do anything
+   useful — we disable the whole playback cluster rather than leaving
+   controls on screen that quietly do nothing. */
+function setPlaybackControlsEnabled(enabled){
+  ['play', 'prev', 'next', 'slider', 'speed'].forEach(id => { $(id).disabled = !enabled; });
 }
 
-/* toggleCol flips one column in or out of the `selectedCols` set, and
-   keeps that chip button's own look (its colour, its "pressed" state) in
-   sync with whether it's currently selected. */
-function toggleCol(i, btn){
-  if (selectedCols.has(i)) {
-    selectedCols.delete(i);
-    btn.classList.remove('active');
-    btn.style.removeProperty('--chip-c');
-    btn.setAttribute('aria-pressed', 'false');
-  } else {
-    selectedCols.add(i);
-    btn.classList.add('active');
-    btn.setAttribute('aria-pressed', 'true');
+/* toggleRow adds or removes one heat-map row from the comparison, then
+   refreshes the legend so it always lists exactly what's currently
+   picked (in the same colour order the chart will draw them). */
+function toggleRow(r){
+  if (selectedRows.has(r)) selectedRows.delete(r); else selectedRows.add(r);
+  updateProfileLegend();
+}
+
+/* updateProfileLegend rebuilds the little legend under "Values at this
+   time" so it always matches what that chart is currently showing:
+     - normal mode: the original Positive / Negative / One-step-earlier key,
+     - comparison mode with nothing picked yet: a short hint,
+     - comparison mode with picks: one swatch + timestamp per picked row,
+       using the exact same colours drawProfile()'s comparison branch
+       paints its bar layers with. */
+function updateProfileLegend(){
+  const el = $('profileLegend');
+  if (!compareMode) {
+    el.innerHTML = `<span><span class="sw" style="background:var(--pos)"></span>Positive</span>`
+      + `<span><span class="sw" style="background:var(--neg)"></span>Negative</span>`
+      + `<span><span class="dash"></span>One step earlier</span>`;
+    return;
   }
-  recolorChips();
-  updateCompareVisibility();
-}
-/* Whenever the selection changes, every selected chip needs to show the
-   SAME colour its line will have on the comparison chart. Because a Set
-   remembers insertion order, "the 1st item added" always gets
-   compareColor(0), "the 2nd" gets compareColor(1), and so on — so chips
-   naturally re-colour themselves as you add or remove picks. */
-function recolorChips(){
-  const order = Array.from(selectedCols);
-  const box = $('chips');
-  order.forEach((i, orderIndex) => {
-    const btn = box.children[i];
-    if (btn) btn.style.setProperty('--chip-c', compareColor(orderIndex));
-  });
-}
-function updateCompareVisibility(){
-  const has = selectedCols.size > 0;
-  $('compare').style.display = has ? 'block' : 'none';
-  $('hint').style.display = has ? 'none' : 'block';
-  if (!has) $('comparelegend').innerHTML = '';
+  if (!selectedRows.size) {
+    el.innerHTML = `<span class="msg">Click one or more rows in "Whole period" below to compare them here.</span>`;
+    return;
+  }
+  el.innerHTML = Array.from(selectedRows).map((r, orderIndex) =>
+    `<span><span class="sw" style="background:${compareColor(orderIndex)}"></span>${rows[r].label}</span>`
+  ).join('');
 }
 
 /* -----------------------------------------------------------------------
@@ -269,11 +283,10 @@ function load(){
   $('axisMinInput').value = round2(-vmax);
   $('axisMaxInput').value = round2(vmax);
 
-  /* Feature 4: a new dataset has a different set of columns, so any old
-     selection made on the previous dataset no longer makes sense — start
-     the comparison picker empty and rebuild its buttons. */
-  selectedCols = new Set();
-  buildChips();
+  /* Feature 4: a new dataset has different rows, so any old comparison
+     picks (which are just row numbers) no longer point at the right
+     moments — leaving comparison mode resets them safely. */
+  setCompareMode(false);
 }
 function round2(v){ return Math.round(v * 100) / 100; }
 
@@ -372,11 +385,23 @@ function computeAxisRange(){
 }
 
 /* -----------------------------------------------------------------------
-   drawProfile(): the "Values at this time" bar chart.
-   For every visible column it draws one bar, tall enough to reach that
-   column's current value, plus a faint dashed line tracing where the
-   values were one step earlier (so you can see whether things are rising
-   or falling, not just where they are right now).
+   drawProfile(): the "Values at this time" chart.
+
+   It draws the axis and gridlines the same way no matter what, then does
+   ONE of two things with the bars themselves:
+     - normal mode: one bar per column reaching that column's value RIGHT
+       NOW, plus a faint dashed line tracing where values were one step
+       earlier (so you can see whether things are rising or falling).
+     - Feature 4, comparison mode: instead of "now", we loop over every
+       row you've picked from the heat map and draw ITS bars too, using
+       that row's own comparison colour at partial transparency
+       (globalAlpha). Because they're semi-transparent and all anchored to
+       the same zero line, overlapping bars blend together instead of
+       hiding one another — you can still see a shorter bar poking out
+       from behind a taller one, and where two overlap you see a mixed
+       colour. This is the "stack them with different colour and opacity"
+       idea, done with plain alpha-blended rectangles rather than a
+       traditional stacked bar chart (which would add values together).
    ----------------------------------------------------------------------- */
 function drawProfile(vals, prev){
   const H = window.innerWidth < 560 ? 240 : 300;
@@ -415,19 +440,36 @@ function drawProfile(vals, prev){
 
   const bw = Math.max(1, cw * .72);
   const y0 = clampY(Y(0)); // bars grow from the zero line (or from the nearest visible edge if 0 is off-screen)
-  for (let i = 0; i < k; i++) {
-    const v = vals[i], x = PAD.l + i * cw + (cw - bw) / 2, y1 = clampY(Y(v));
-    ctx.fillStyle = v >= 0 ? C['--pos'] : C['--neg'];
-    ctx.globalAlpha = hoverIdx < 0 || hoverIdx === i ? 1 : .55; // fade out every bar except the one you're hovering
-    ctx.fillRect(x, Math.min(y0, y1), bw, Math.max(1, Math.abs(y1 - y0)));
+
+  if (compareMode) {
+    /* One alpha-blended bar layer per picked row, oldest pick first so
+       later picks paint on top — order only affects which bar's edge is
+       "on top" where two are the exact same height, since alpha blending
+       itself doesn't care about order. */
+    Array.from(selectedRows).forEach((r, orderIndex) => {
+      ctx.fillStyle = compareColor(orderIndex);
+      for (let i = 0; i < k; i++) {
+        const v = rows[r].vals[cols[i]], x = PAD.l + i * cw + (cw - bw) / 2, y1 = clampY(Y(v));
+        ctx.globalAlpha = (hoverIdx < 0 || hoverIdx === i ? .62 : .28);
+        ctx.fillRect(x, Math.min(y0, y1), bw, Math.max(1, Math.abs(y1 - y0)));
+      }
+    });
+    ctx.globalAlpha = 1;
+  } else {
+    for (let i = 0; i < k; i++) {
+      const v = vals[i], x = PAD.l + i * cw + (cw - bw) / 2, y1 = clampY(Y(v));
+      ctx.fillStyle = v >= 0 ? C['--pos'] : C['--neg'];
+      ctx.globalAlpha = hoverIdx < 0 || hoverIdx === i ? 1 : .55; // fade out every bar except the one you're hovering
+      ctx.fillRect(x, Math.min(y0, y1), bw, Math.max(1, Math.abs(y1 - y0)));
+    }
+    ctx.globalAlpha = .6;
+    ctx.setLineDash([4, 3]);
+    ctx.strokeStyle = C['--ghost']; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    prev.forEach((v, i) => { const x = PAD.l + (i + .5) * cw, y = clampY(Y(v)); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    ctx.stroke();
+    ctx.setLineDash([]); ctx.globalAlpha = 1;
   }
-  ctx.globalAlpha = .6;
-  ctx.setLineDash([4, 3]);
-  ctx.strokeStyle = C['--ghost']; ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  prev.forEach((v, i) => { const x = PAD.l + (i + .5) * cw, y = clampY(Y(v)); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
-  ctx.stroke();
-  ctx.setLineDash([]); ctx.globalAlpha = 1;
   xLabels(ctx, w, bot + 8, cw);
 }
 
@@ -487,91 +529,28 @@ function drawHeat(){
     ctx.strokeRect(Math.floor(PAD.l + hoverIdx * cw) + .5, top + .5, Math.max(1, Math.floor(cw)) - 1, n * rh - 1);
     ctx.globalAlpha = 1;
   }
-  ctx.strokeStyle = C['--ink']; ctx.lineWidth = 2;
-  ctx.strokeRect(PAD.l - 1, top + cr * rh, pw + 2, rh); // outline the row matching the current animation time
-  const yy = top + (t + .5) * rh;
-  ctx.fillStyle = C['--ink'];
-  ctx.beginPath(); ctx.moveTo(w - PAD.r + 3, yy); ctx.lineTo(w - 2, yy - 5); ctx.lineTo(w - 2, yy + 5); ctx.closePath(); ctx.fill();
+  if (compareMode) {
+    /* Feature 4: outline every picked row in its own comparison colour —
+       the same colour drawProfile() paints its bars with and
+       updateProfileLegend() shows in the legend — so it's obvious at a
+       glance which row on the map corresponds to which layer up above. */
+    Array.from(selectedRows).forEach((r, orderIndex) => {
+      ctx.strokeStyle = compareColor(orderIndex); ctx.lineWidth = 2;
+      ctx.strokeRect(PAD.l - 1 + .5, top + r * rh + .5, pw + 1, rh - 1);
+    });
+  } else {
+    /* Outside comparison mode, outline + arrow the row the animation
+       clock is currently on — this has no meaning while comparing, since
+       playback is paused and the bar chart isn't showing "now" anymore. */
+    ctx.strokeStyle = C['--ink']; ctx.lineWidth = 2;
+    ctx.strokeRect(PAD.l - 1, top + cr * rh, pw + 2, rh);
+    const yy = top + (t + .5) * rh;
+    ctx.fillStyle = C['--ink'];
+    ctx.beginPath(); ctx.moveTo(w - PAD.r + 3, yy); ctx.lineTo(w - 2, yy - 5); ctx.lineTo(w - 2, yy + 5); ctx.closePath(); ctx.fill();
+  }
   ctx.font = `12px ${C.font}`;
   xLabels(ctx, w, top + n * rh + 8, cw);
   heatGeom = {top, rh, cw};
-}
-
-/* -----------------------------------------------------------------------
-   Feature 4 — drawCompare(): the "compare columns" line chart.
-
-   Unlike the bar chart (which shows one instant in time) this chart shows
-   an ENTIRE column's story across every row, as one continuous line — one
-   line per column you picked with the chips. The algorithm:
-     1. Look only at the columns in `selectedCols` (skip everything else).
-     2. Find the biggest absolute value among JUST those columns, across
-        ALL rows, and build a symmetric axis around zero from it (the same
-        "nice round number" idea used for the main chart, so small
-        selections don't get an unnecessarily huge axis).
-     3. For each selected column, walk through every row left-to-right,
-        convert (row index, value) into (x pixel, y pixel), and connect
-        the dots with a stroked line — using that column's own fixed
-        colour from COMPARE_PALETTE so it's always the same colour as its
-        chip and its legend entry.
-   ----------------------------------------------------------------------- */
-function drawCompare(){
-  if (!selectedCols.size) { compareGeom = null; return; }
-  const H = window.innerWidth < 560 ? 220 : 260;
-  const {ctx, w, h} = fit($('compare'), H);
-  ctx.clearRect(0, 0, w, h);
-  const top = 10, bot = h - 30, ph = bot - top, pw = w - PAD.l - PAD.r;
-
-  const order = Array.from(selectedCols); // insertion order = colour order
-  let mx = 0;
-  order.forEach(i => rows.forEach(r => { mx = Math.max(mx, Math.abs(r.vals[cols[i]])); }));
-  const cmax = niceCeil(mx || 1);
-  const Y = v => top + (1 - (v + cmax) / (2 * cmax)) * ph;
-  const X = r => n > 1 ? PAD.l + (r / (n - 1)) * pw : PAD.l + pw / 2;
-
-  ctx.font = `12px ${C.font}`;
-  ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-  for (let s = -4; s <= 4; s++) {
-    const v = s * cmax / 4, y = Math.round(Y(v)) + .5;
-    ctx.strokeStyle = s === 0 ? C['--muted'] : C['--grid'];
-    ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(w - PAD.r, y); ctx.stroke();
-    ctx.fillStyle = C['--muted'];
-    ctx.fillText((v > 0 ? '+' : '') + (+v.toFixed(2)), PAD.l - 10, y);
-  }
-
-  order.forEach((i, orderIndex) => {
-    ctx.strokeStyle = compareColor(orderIndex);
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    for (let r = 0; r < n; r++) {
-      const x = X(r), y = Y(rows[r].vals[cols[i]]);
-      r ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
-    }
-    ctx.stroke();
-  });
-
-  /* Mark the row the animation is currently on, exactly like the vertical
-     "you are here" cue would look on a video scrubber, so it's obvious how
-     the comparison lines relate to the bar chart and clock above. */
-  const cx = X(t);
-  ctx.strokeStyle = C['--ink']; ctx.globalAlpha = .35; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
-  ctx.beginPath(); ctx.moveTo(cx, top); ctx.lineTo(cx, bot); ctx.stroke();
-  ctx.setLineDash([]); ctx.globalAlpha = 1;
-
-  ctx.font = `12px ${C.font}`;
-  ctx.fillStyle = C['--muted']; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-  const everyN = Math.max(1, Math.ceil((n) / Math.max(1, Math.floor(pw / 90))));
-  for (let r = 0; r < n; r += everyN) {
-    ctx.textAlign = r === 0 ? 'left' : (r + everyN >= n ? 'right' : 'center');
-    ctx.fillText(shortLabel(rows[r].label), X(r), bot + 8);
-  }
-
-  compareGeom = {top, bot, pw, order};
-
-  /* Keep the little legend under the chart in sync with what's drawn. */
-  $('comparelegend').innerHTML = order.map((i, orderIndex) =>
-    `<span><span class="sw" style="background:${compareColor(orderIndex)}"></span>${xname} ${cols[i] + 1}</span>`
-  ).join('');
 }
 
 function updateText(){
@@ -623,7 +602,6 @@ function frame(now){
     curVals = valuesAt(t);
     drawProfile(curVals, valuesAt(Math.max(0, t - 1)));
     drawHeat();
-    drawCompare();
     updateText();
   }
   requestAnimationFrame(frame);
@@ -642,6 +620,7 @@ $('load').addEventListener('click', () => { load(); });
 document.addEventListener('keydown', e => {
   const tag = (e.target.tagName || '').toLowerCase();
   if (tag === 'textarea' || tag === 'input' || tag === 'select') return;
+  if (compareMode) return; // playback shortcuts are meaningless while the chart is showing a comparison
   if (e.key === ' ') { e.preventDefault(); $('play').click(); }
   else if (e.key === 'ArrowLeft') { e.preventDefault(); jump(Math.round(t) - 1); }
   else if (e.key === 'ArrowRight') { e.preventDefault(); jump(Math.round(t) + 1); }
@@ -661,18 +640,12 @@ $('axisAuto').addEventListener('change', e => {
 $('axisMinInput').disabled = axisAuto;
 $('axisMaxInput').disabled = axisAuto;
 
-/* ---- Feature 4: comparison picker wiring -------------------------------- */
-$('selAll').addEventListener('click', () => {
-  selectedCols = new Set(cols.map((_, i) => i));
-  Array.from($('chips').children).forEach(btn => { btn.classList.add('active'); btn.setAttribute('aria-pressed', 'true'); });
-  recolorChips();
-  updateCompareVisibility();
-});
-$('selClear').addEventListener('click', () => {
-  selectedCols.clear();
-  Array.from($('chips').children).forEach(btn => { btn.classList.remove('active'); btn.style.removeProperty('--chip-c'); btn.setAttribute('aria-pressed', 'false'); });
-  updateCompareVisibility();
-});
+/* ---- Feature 4: "Multiple choice" toggle wiring -------------------------
+   One button flips compareMode on/off (see setCompareMode above). Which
+   row-clicks on the heat map DO — jump the clock, or add/remove a
+   comparison pick — is decided later, in the #heat 'click' listener,
+   simply by checking compareMode at click time. */
+$('multiBtn').addEventListener('click', () => setCompareMode(!compareMode));
 
 /* ---- Feature 5: colour palette pickers ----------------------------------
    These two <input type="color"> boxes are wired straight to the CSS
@@ -698,8 +671,7 @@ paintGradientBar();
 
 /* ---- Hover tooltips ------------------------------------------------------
    Small floating label that follows the mouse and shows the exact number
-   under the cursor — for the bar chart, the heat map, and (new) the
-   comparison chart. */
+   under the cursor — for the bar chart and the heat map. */
 const tip = $('tip');
 function showTip(html, e){
   tip.innerHTML = html;
@@ -719,7 +691,17 @@ $('profile').addEventListener('pointermove', e => {
   const {i} = colAt($('profile'), e);
   if (i < 0 || i >= cols.length) { hideTip(); return; }
   hoverIdx = i;
-  showTip(`${xname} ${cols[i] + 1}<br><b>${fmt(curVals[i])}</b>`, e);
+  if (compareMode && selectedRows.size) {
+    /* In comparison mode there's no single "current value" any more — show
+       every picked row's value at this column instead, each labelled in
+       its own comparison colour so the tooltip reads like the legend. */
+    const lines = Array.from(selectedRows).map((r, orderIndex) =>
+      `<span style="color:${compareColor(orderIndex)}">${shortLabel(rows[r].label)}: <b>${fmt(rows[r].vals[cols[i]])}</b></span>`
+    ).join('<br>');
+    showTip(`${xname} ${cols[i] + 1}<br>${lines}`, e);
+  } else {
+    showTip(`${xname} ${cols[i] + 1}<br><b>${fmt(curVals[i])}</b>`, e);
+  }
 });
 $('profile').addEventListener('pointerleave', hideTip);
 $('heat').addEventListener('pointermove', e => {
@@ -729,27 +711,21 @@ $('heat').addEventListener('pointermove', e => {
   if (i < 0 || i >= cols.length || r < 0 || r >= n) { hideTip(); $('heat').style.cursor = 'default'; return; }
   $('heat').style.cursor = 'pointer';
   hoverIdx = i;
-  showTip(`${rows[r].label}<br>${xname} ${cols[i] + 1}: <b>${fmt(rows[r].vals[cols[i]])}</b>`, e);
+  const picked = compareMode && selectedRows.has(r) ? ' (picked)' : '';
+  showTip(`${rows[r].label}${picked}<br>${xname} ${cols[i] + 1}: <b>${fmt(rows[r].vals[cols[i]])}</b>`, e);
 });
 $('heat').addEventListener('pointerleave', hideTip);
+/* Feature 4: what a row-click DOES depends on compareMode — normally it
+   jumps the clock there (as it always did); while "Multiple choice" is on,
+   it instead adds or removes that row from the comparison. */
 $('heat').addEventListener('click', e => {
   if (!heatGeom) return;
   const y = e.clientY - $('heat').getBoundingClientRect().top;
   const r = Math.floor((y - heatGeom.top) / heatGeom.rh);
-  if (r >= 0 && r < n) jump(r);
+  if (r < 0 || r >= n) return;
+  if (compareMode) toggleRow(r);
+  else jump(r);
 });
-$('compare').addEventListener('pointermove', e => {
-  if (!compareGeom || !n) return;
-  const rect = $('compare').getBoundingClientRect();
-  const x = e.clientX - rect.left;
-  const frac = Math.max(0, Math.min(1, (x - PAD.l) / compareGeom.pw));
-  const r = Math.round(frac * (n - 1));
-  const lines = compareGeom.order.map((i, orderIndex) =>
-    `<span style="color:${compareColor(orderIndex)}">${xname} ${cols[i] + 1}: <b>${fmt(rows[r].vals[cols[i]])}</b></span>`
-  ).join('<br>');
-  showTip(`${rows[r].label}<br>${lines}`, e);
-});
-$('compare').addEventListener('pointerleave', hideTip);
 
 /* ---- First paint ---------------------------------------------------------
    Set the Play/Pause button's starting label, load the example data that's
