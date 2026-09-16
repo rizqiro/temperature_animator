@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wind Trend Animator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#eaf0f3; --panel:#f8fafb; --ink:#13263a; --muted:#5d6f80; --line:#cfdae2; --grid:#dfe7ec;
+  --pos:#1f6fb2; --neg:#c77a12; --ghost:#13263a; --btn:#13263a; --btn-ink:#f8fafb;
+  --sans:"Barlow", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --cond:"Barlow Semi Condensed", "Barlow", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0c1823; --panel:#122230; --ink:#e3ecf2; --muted:#8fa3b3; --line:#223647; --grid:#1a2c3b;
+    --pos:#5aa6ea; --neg:#f0a345; --ghost:#e3ecf2; --btn:#e3ecf2; --btn-ink:#0c1823;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0c1823; --panel:#122230; --ink:#e3ecf2; --muted:#8fa3b3; --line:#223647; --grid:#1a2c3b;
+  --pos:#5aa6ea; --neg:#f0a345; --ghost:#e3ecf2; --btn:#e3ecf2; --btn-ink:#0c1823;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.5;font-variant-numeric:tabular-nums}
+.wrap{max-width:1120px;margin:0 auto;padding:28px 18px 56px}
+h1{font-family:var(--cond);font-weight:600;font-size:clamp(1.5rem,3vw,2.1rem);margin:0;letter-spacing:-.005em}
+.lede{margin:2px 0 0;color:var(--muted);max-width:68ch}
+.stage{margin-top:22px;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:18px 18px 16px}
+.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 24px}
+.clock{font-family:var(--cond);font-weight:600;font-size:clamp(1.9rem,5vw,3rem);line-height:1}
+.stepno{color:var(--muted);font-size:.9rem;margin-top:4px}
+.controls{display:flex;align-items:center;gap:8px;flex:1 1 380px;max-width:560px}
+button{font:inherit;cursor:pointer;border-radius:4px;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:7px 12px;line-height:1.1}
+button:hover{border-color:var(--muted)}
+button.primary{background:var(--btn);color:var(--btn-ink);border-color:var(--btn);min-width:78px;font-weight:600}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,summary:focus-visible,canvas:focus-visible{outline:2px solid var(--pos);outline-offset:2px}
+input[type=range]{flex:1;min-width:110px;accent-color:var(--pos)}
+select,input[type=text],textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:6px 8px}
+.facts{display:flex;flex-wrap:wrap;gap:6px 26px;margin:14px 0 4px;font-size:.92rem;color:var(--muted)}
+.facts b{color:var(--ink);font-weight:600}
+h2{font-family:var(--cond);font-size:1.15rem;font-weight:600;margin:22px 0 2px}
+.note{color:var(--muted);font-size:.88rem;margin:0 0 8px;max-width:75ch}
+canvas{display:block;width:100%}
+.legend{display:flex;flex-wrap:wrap;align-items:center;gap:6px 18px;font-size:.85rem;color:var(--muted);margin-top:8px}
+.sw{display:inline-block;width:11px;height:11px;border-radius:2px;vertical-align:-1px;margin-right:5px}
+.dash{display:inline-block;width:18px;border-top:2px dashed var(--ghost);opacity:.6;vertical-align:3px;margin-right:5px}
+.grad{height:10px;width:min(260px,50vw);border-radius:2px;background:linear-gradient(90deg,var(--neg),var(--panel),var(--pos));border:1px solid var(--line)}
+.section{margin-top:26px}
+#tip{position:fixed;left:0;top:0;pointer-events:none;background:var(--ink);color:var(--panel);font-size:.82rem;padding:6px 9px;border-radius:4px;opacity:0;z-index:10;white-space:nowrap;line-height:1.35}
+details{margin-top:30px;border-top:1px solid var(--line);padding-top:16px}
+summary{cursor:pointer;font-family:var(--cond);font-weight:600;font-size:1.15rem}
+textarea{width:100%;min-height:170px;font-size:.78rem;white-space:pre;overflow:auto;margin-top:6px}
+.row{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;margin-top:12px;font-size:.92rem}
+.msg{color:var(--muted);font-size:.88rem}
+@media (max-width:560px){ .stage{padding:14px 12px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Wind trend animator</h1>
+  <p class="lede">Each column in your table is a position and each row is a moment in time. Press play to watch the values shift, or scan the colour map below to see the whole period at once.</p>
+
+  <div class="stage">
+    <div class="top">
+      <div>
+        <div class="clock" id="clock">–</div>
+        <div class="stepno" id="stepno"></div>
+      </div>
+      <div class="controls">
+        <button id="prev" aria-label="Previous time step">◀</button>
+        <button id="play" class="primary">Pause</button>
+        <button id="next" aria-label="Next time step">▶</button>
+        <input type="range" id="slider" min="0" max="1" step="0.001" value="0" aria-label="Time">
+        <select id="speed" aria-label="Playback speed">
+          <option value="0.5">Slow</option>
+          <option value="1" selected>Normal</option>
+          <option value="2">Fast</option>
+          <option value="4">Very fast</option>
+        </select>
+      </div>
+    </div>
+    <div class="facts" id="facts"></div>
+
+    <h2>Values at this time</h2>
+    <canvas id="profile" tabindex="0" aria-label="Bar chart of values at the current time"></canvas>
+    <div class="legend">
+      <span><span class="sw" style="background:var(--pos)"></span>Positive</span>
+      <span><span class="sw" style="background:var(--neg)"></span>Negative</span>
+      <span><span class="dash"></span>One step earlier</span>
+    </div>
+  </div>
+
+  <div class="stage section">
+    <h2 style="margin-top:0">Whole period</h2>
+    <p class="note">Rows are times, columns are positions. Stronger colour means a larger value. Click a row to jump to that time.</p>
+    <canvas id="heat" aria-label="Colour map of all times and positions"></canvas>
+    <div class="legend"><span id="lmin"></span><span class="grad"></span><span id="lmax"></span></div>
+  </div>
+
+  <details>
+    <summary>Use your own data</summary>
+    <p class="note">Copy the cells from Excel and paste them here. Put the time in the first column and the values in the rest. Commas and dots both work as decimal marks.</p>
+    <textarea id="raw" spellcheck="false">08 Nov 24 16:00 0 0 0 0 0 0 0 0 0 0,278761506 5,748980522 7,026174545 3,767543793 -4,2023592 -8,511863708 -9,374340057 -15,70736885 -15,23778629 -12,29249573 -12,87323284 -5,673718452 -11,04813671 -10,77376747 -7,14586401 -9,815058708 -8,315563202 -8,479912758 -10,52454376 -3,802776575 -9,396922112 -8,010592461 -3,455155373 -6,788349152 -5,86325264 -0,497825235 -0,935631037 4,862805843 -1,805223346 0,160504863 3,57294178 -0,516281545 0,196873784 -1,029436827 -1,41078639 3,086466074 -2,728922367 -0,204165041 6,279223442 -3,044388294 -6,098436832 0,405456305 9,355106354 2,070640802 1,742883563 5,501738071 2,37193203 5,390573025 5,788126469 4,539504528 8,943961143 5,850766659 5,834611893 9,383688927 4,812242508 6,267825127
+08 Nov 24 20:00 0 0 0 0 0 0 0 0 0 3,879411221 0,665504813 -0,870931983 2,245116472 -5,995650291 -8,911446571 -9,67376709 -16,10804939 -16,31958199 -12,65354347 -12,76471806 -6,152650356 -11,41137886 -10,21675682 -6,958301067 -9,384291649 -7,569339752 -7,800330162 -10,03447628 -3,800116539 -9,489116669 -8,286922455 -3,592737913 -7,005505085 -5,141213417 -0,334718436 -0,617631078 4,109213829 -1,888407826 -0,582339823 2,308203697 -1,230203867 -0,477815539 -1,28764081 -1,735446572 2,423689365 -3,551543713 -0,978097022 4,415689468 -3,263223171 -5,109980583 0,66699028 8,792348862 1,761349559 1,397194147 4,987369061 1,752514601 4,950582504 5,077271938 3,656621456 8,409223557 4,837961197 4,876747608 7,923825264 3,464009762 5,673019409
+09 Nov 24 00:00 0 0 0 0 0 0 0 0 0 5,920893669 19,93995094 39,17216492 3,136932135 -5,483213902 -8,698446274 -9,499728203 -16,65720367 -17,29508781 -13,55447578 -14,19014549 -6,967825413 -12,52361202 -11,54054356 -7,518660069 -10,57971859 -8,693651199 -9,017961502 -11,01748562 -4,671048641 -10,76149464 -9,399951935 -4,344077587 -8,068184853 -6,72095108 -1,66506803 -1,937980533 3,133660316 -3,207310677 -2,046970844 0,882834971 -3,153689384 -2,051980495 -3,42754364 -4,076553345 0,259621352 -5,337407589 -3,021718502 2,155281544 -5,912893295 -7,043543816 -0,983126223 7,707495213 0,64312619 0,643757284 4,662096977 1,521718502 4,895077705 5,10669899 4,115834713 9,028291702 5,562553406 5,78448534 8,690465927 4,597844601 6,723834991
+09 Nov 24 04:00 0 0 0 0 0 0 0 0 0 16,7236805 9,50494194 -2,150485516 4,120116711 -4,18924284 -7,115223408 -8,767446518 -14,93275738 -15,04466057 -11,87896061 -12,67012596 -5,430747509 -11,44339848 -10,49087429 -6,650359154 -9,277999878 -6,743485451 -7,456563473 -9,755970955 -3,184058189 -9,563728333 -8,224766731 -4,084650517 -7,605388165 -5,702126026 -1,147854328 -1,198524237 3,373048544 -2,828271866 -2,096922398 1,011058211 -2,417165041 -1,334485412 -3,332300901 -3,771407843 1,020320415 -5,132456303 -2,818271875 2,222922325 -4,980340004 -6,833155632 -1,103466034 8,244281769 0,877281547 0,626349509 4,541932106 1,1011554 4,392941952 4,597330093 3,435184479 8,526388168 4,850961208 5,479485512 8,937058449 4,243912697 6,649291039
+09 Nov 24 08:00 0 0 0 0 0 0 0 0 0 12,35164928 17,0999527 17,30640793 10,88880539 1,144203901 -3,042495251 -4,963271618 -12,80715561 -13,43757248 -12,26856327 -13,9074173 -5,035971165 -12,64623356 -11,56156349 -8,880980492 -13,02556324 -10,02947617 -10,58461094 -13,82996178 -6,256922245 -14,13249493 -11,73021317 -6,159903049 -10,09194183 -5,97701931 -2,238203764 -3,515436888 3,408621311 -4,595873833 -2,356378555 1,959601998 -2,854213476 -1,502699018 -3,8517766 -3,516009569 2,241369009 -5,945019245 -3,214466095 2,31833005 -7,344446182 -7,134135723 -2,458397865 9,619436264 -0,052194174 -0,502514601 4,968407631 -1,048339844 4,477825165 3,686300993 2,4368155 9,290513992 4,350495338 4,150038719 8,186436653 2,099495173 6,491951466
+09 Nov 24 12:00 0 0 0 0 0 0 0 0 0 0 25,73699951 18,00889397 13,25449467 5,854495525 -0,94705826 -2,444038868 -9,427999496 -9,563417435 -9,363573074 -11,79096127 -2,940417528 -10,07429123 -9,227203369 -5,291193962 -8,91740799 -6,08091259 -7,550504684 -9,869252205 -2,016572714 -10,01717472 -8,534825325 -3,957631111 -7,738427162 -5,149000168 -1,313135982 -1,993737817 4,717301369 -3,263611794 -1,743864059 1,273815513 -2,949155331 -1,924631 -3,867291212 -4,13458252 1,77505827 -5,895970821 -2,781786442 3,57831049 -5,296252251 -7,875300884 -3,617747545 9,078680038 -2,005087376 -2,15369916 2,379485369 -2,646495104 1,916553378 1,138718486 -0,57656312 5,890465736 0,789203882 1,338863969 5,613310814 -0,73041749 3,058912754
+09 Nov 24 16:00 0 0 0 0 0 0 0 0 0 0 29,00093269 14,38341713 12,0981741 2,887155294 -6,245301247 -6,968728065 -14,32591248 -13,99397087 -13,59537792 -14,82684422 -6,200611591 -13,47535896 -12,19833946 -8,342718124 -12,22446537 -8,704126358 -9,992717743 -11,8464365 -3,875145674 -11,76961136 -10,15374756 -5,048417568 -8,516291618 -4,286660194 0,248776704 -0,236436889 6,075048447 -1,615825295 0,405941755 3,662757158 -0,534786403 0,821961164 -1,142747521 -1,650844693 3,99622345 -3,752058268 -0,247786403 5,076961517 -3,816281796 -5,061339855 0,152446598 11,53051472 2,101747513 2,158922195 6,415184498 1,698718429 5,913534164 5,330970764 4,301291466 10,27131081 5,747601986 5,988796234 9,713272095 4,342096806 7,959271908
+09 Nov 24 20:00 0 0 0 0 0 0 0 0 0 0 23,21840858 13,96107769 5,333543777 -1,502475739 -9,247485161 -10,83280563 -17,59328079 -17,34444618 -15,40531063 -16,67848587 -8,978922844 -15,43831062 -14,38689327 -11,02576733 -14,2296114 -11,94441795 -12,42093182 -14,31303883 -7,013475895 -14,27337837 -12,02700996 -6,998203754 -10,54321384 -6,083349705 -0,868300974 -1,254378676 4,769922256 -1,436786413 0,159281552 4,208902836 0,669203877 1,458126187 0,889815509 1,223466039 6,760301113 -0,382291287 2,352135897 7,527592182 -0,493999988 -0,864951432 4,073825359 13,5208149 5,437727928 5,143883228 8,915961266 5,013038635 8,915961266 8,479165077 6,6005826 11,3595047 7,51223278 7,696446419 10,29588318 4,902611732 7,431427002
+10 Nov 24 00:00 0 0 0 0 0 0 0 0 0 0 1,926153898 10,97544289 15,71777916 -0,653721154 -7,280163288 -8,308115959 -15,15156746 -14,5653553 -13,79723072 -15,11453915 -6,014442444 -13,57721138 -12,33419228 -8,595202446 -12,26910591 -9,661471367 -10,72254848 -12,60019207 -4,610644341 -12,6660862 -10,76809597 -5,596663475 -8,909817696 -4,992557526 -0,53534615 -0,226221144 5,581971169 -1,941346169 0,026086537 3,544951916 -0,846538424 0,213230759 -1,616701841 -1,329288483 4,145778656 -3,246826887 0,623990357 5,918182373 -2,456182718 -3,575759649 0,979701877 12,39401913 3,547855854 3,617769241 8,063778877 3,095269203 7,16026926 6,626990318 5,211615562 10,90750027 6,281451702 6,596451759 10,22135544 4,41609621 7,454173088
+10 Nov 24 04:00 0 0 0 0 0 0 0 0 0 0 4,644368649 12,31958294 10,80387402 -5,854233265 -10,99239826 -11,51783466 -17,61437798 -16,75395203 -12,95239735 -13,30926228 -6,830494881 -11,82765007 -10,23048496 -7,346534252 -9,300766945 -6,824058056 -7,513194084 -9,610913277 -3,148582458 -9,007475853 -7,53938818 -3,438504934 -6,285737991 -4,369310379 -0,249262139 0,22462137 5,395592213 -0,32422331 0,957825243 3,74041748 0,283194155 1,781495094 -0,30084464 -0,381213605 3,823834896 -1,878912568 0,58333981 5,07501936 -2,132650375 -3,815475702 1,783834934 11,35135937 4,226475716 4,158300877 7,752436638 3,893359184 7,864640713 7,532427311 6,605339527 11,41674805 7,268854141 7,65617466 11,01893234 6,289087296 8,744057655
+10 Nov 24 08:00 0 0 0 0 0 0 0 0 0 0 18,46529007 29,05552864 1,32509613 -6,092182636 -10,81603909 -11,28920174 -17,39308548 -16,96398163 -13,33336544 -13,75220203 -6,716547966 -12,21376038 -11,52199078 -7,930307865 -10,67571163 -8,370692253 -9,157990456 -10,8330574 -4,678048134 -10,50058651 -8,761356354 -4,42773056 -7,930701733 -5,475375175 -0,845076919 -1,285259604 4,20984602 -2,060124874 -0,569374979 2,428413391 -0,860269248 1,007086515 -0,058471151 -0,29565385 4,312624931 -1,579673052 0,460086554 5,650894165 -1,751528859 -2,663038492 2,817980766 11,6781826 4,381961346 3,967240572 7,877595901 3,945423126 7,32903862 7,810548306 6,536221027 11,62140369 7,936990261 8,053547859 11,10513401 6,798644066 8,606086731
+10 Nov 24 12:00 0 0 0 0 0 0 0 0 0 1,300024629 25,0321064 25,25514603 8,958854675 0,137640774 -4,521980762 -4,901310444 -11,83491325 -10,98956299 -9,16418457 -10,61345673 -3,082339764 -8,593679428 -7,694660187 -4,43434 -7,091524124 -4,289465904 -6,028650284 -7,729505062 -0,895757258 -7,090844631 -5,387009621 -0,972834945 -4,627446651 -4,07292223 -0,064252429 0,333572835 7,026795864 -0,350805819 0,877281547 3,629970789 -0,06218446 2,47242713 -0,090223305 -0,344970912 4,133834839 -2,121155262 1,06133008 5,298407555 -2,317737818 -5,482038498 0,303621352 11,44985485 1,845466018 2,037708759 5,742048264 1,867300987 5,986174583 4,463980675 3,999339819 9,569407463 4,975233078 5,409329891 9,464941978 5,057145596 7,07503891
+10 Nov 24 16:00 0 0 0 0 0 0 0 0 0 2,999557495 1,545465946 -3,364864111 6,417631149 19,44566917 10,883214 -6,662136078 -13,54957294 -12,9712038 -10,04485416 -10,98087311 -4,885660172 -10,43105888 -10,25032997 -7,451087475 -10,78069878 -8,093757629 -9,674359322 -11,29633045 -5,749718666 -11,44126225 -9,847262383 -5,524543762 -8,666854858 -6,100233078 -1,897951484 -1,456980586 3,875164986 -2,022699118 -0,266184449 2,581068039 -0,175699025 1,194184542 -0,190572813 -0,306165069 3,909359217 -1,663232923 1,453252435 5,103766918 -2,063902855 -2,949126244 2,52505827 11,60717487 4,128407478 4,891000271 8,330971718 4,936738014 8,386932373 7,595786095 6,871194363 11,24226189 7,820922375 7,128174305 10,44491291 5,418000221 7,539009571
+10 Nov 24 20:00 0 0 0 0 0 0 0 0 0 4,699090481 1,267374992 1,659326911 29,15138435 14,3748951 -3,232711554 -5,17525959 -12,53040409 -12,71378899 -10,63073158 -11,49743271 -5,016961575 -11,06270218 -10,19956684 -7,381153584 -10,1704998 -7,569596291 -8,708683014 -10,49633694 -4,949711323 -10,81582737 -9,398105621 -5,571346283 -8,601673126 -6,360442162 -2,118557692 -1,708038449 3,78687501 -1,697740316 -0,432201952 2,146586657 -0,914682686 0,652701914 -1,149903893 -1,294019222 2,645250082 -2,797423124 -0,253201932 3,647903919 -2,656346083 -4,106942177 1,41798079 10,37190342 2,983355761 2,742990255 6,194605827 2,928951979 6,403470993 5,874461651 5,059644222 9,951202393 6,230779171 6,8633461 9,305644035 5,720191956 7,683413506
+11 Nov 24 00:00 0 0 0 0 0 0 0 0 0 6,39862299 1,399346113 -0,335057676 19,6779232 5,358846188 -3,389211416 -4,678980827 -12,3034811 -12,78428841 -9,94849968 -11,10949993 -4,360865593 -10,5068264 -9,683807373 -6,432326794 -10,18273067 -8,077230453 -9,008461952 -11,17730713 -5,557749748 -11,64771175 -9,863134384 -5,48961544 -9,260172844 -7,445730686 -2,913326979 -2,70953846 2,412884712 -3,254596233 -1,753057718 1,24244225 -1,952269316 -0,423384607 -2,013653994 -2,091865301 2,02951932 -3,760269165 -0,676384628 3,471519232 -3,696038485 -4,947249889 0,881903827 10,07526875 3,40428853 3,332192183 6,510134697 3,411480904 7,023499966 6,552134991 5,521365166 10,21261501 6,638653755 7,104731083 9,730980873 5,756788254 7,639942169
+11 Nov 24 04:00 0 0 0 0 0 0 0 0 0 8,098155975 2,02270484 2,998352528 16,33430481 1,771209478 -4,058628559 -5,726609707 -12,63256264 -13,25045681 -10,49317169 -11,81189537 -5,364209652 -11,22407627 -10,82177162 -7,710837841 -10,73451424 -8,55472374 -10,02893353 -11,70482826 -6,065314293 -11,86962795 -10,58701897 -6,254857063 -9,142504692 -6,997542858 -2,718800068 -2,490038157 2,840533257 -2,539828539 -1,097552419 2,051733255 -0,897142828 0,605047643 -0,519695222 -0,77249527 3,343409538 -1,790104747 0,52603811 4,889295578 -1,515838146 -3,085723877 2,776047707 11,82850456 4,741418839 4,835143089 8,123638153 4,469361782 7,834047794 7,709828377 6,466352463 11,13244724 7,567942619 7,420990467 10,30170441 6,127181053 8,065990448
+11 Nov 24 08:00 0 0 0 0 0 0 0 0 0 9,992968559 3,041057825 15,55121136 19,16374969 3,180942297 -3,623846054 -5,264173031 -12,55824947 -12,91976929 -10,57384682 -11,70440388 -4,922230721 -11,20936584 -11,00634575 -7,624923229 -10,50715446 -8,136538506 -9,783173561 -12,00548077 -5,802365303 -11,9025774 -10,59319305 -6,593826771 -9,818423271 -7,227345943 -3,377480745 -2,984923124 3,084326982 -2,638249874 -0,987057686 2,369499922 -0,993365407 0,925230801 -0,340019226 -0,545961499 4,187865257 -1,828249931 0,574884593 5,300615311 -1,615461469 -2,754230738 2,620211601 12,2325964 4,30273056 4,032307625 7,519442558 3,548673153 6,896615505 6,772423267 5,562211514 10,81986523 6,310788631 6,605865479 9,359615326 4,681173325 6,684538364
+11 Nov 24 12:00 0 0 0 0 0 0 0 0 0 15,13972092 20,28333092 11,96104813 7,512000084 5,621523857 -0,641563118 -2,61773777 -9,501805305 -9,707882881 -8,452756882 -10,52206802 -3,117990255 -9,590669632 -8,224300385 -5,484213352 -8,91486454 -6,135844707 -7,813009739 -9,842495918 -3,625893354 -10,93365002 -8,962766647 -5,153436661 -8,233727455 -5,814562798 -1,953446627 -1,655504823 3,808291435 -1,866757274 0,195291251 2,683068037 -0,555592239 0,550174773 -1,911689401 -1,715805769 3,246058226 -2,897300959 -0,269058257 4,328077793 -2,863883495 -4,739029408 0,91802913 11,68268967 2,429825306 2,736553192 6,396864414 1,869592309 6,004349709 4,877398491 4,296922207 9,330533981 4,476893425 4,656485558 7,422961235 2,812194347 5,661504745
+11 Nov 24 16:00 0 0 0 0 0 0 0 0 0 14,71410751 17,76857567 18,94769287 19,74365425 2,004769325 -3,627788544 -5,352884769 -12,12346172 -12,76988411 -10,77461529 -11,87138462 -4,427307606 -11,09392357 -10,09251881 -7,255230904 -10,30707741 -7,531211376 -9,593500137 -11,21917248 -5,134346485 -11,73113441 -10,05617237 -5,585923195 -8,66607666 -6,673134327 -2,312576771 -1,875211596 4,083096027 -1,597000003 0,544480741 3,078000069 0,572884619 2,36869216 0,566076934 1,118326902 5,435865402 -0,757192314 2,048077106 6,03374958 -0,635980785 -2,942153931 2,877673149 13,00424957 4,693922997 5,190365314 8,616134644 4,156269073 8,039057732 7,427249908 6,190327168 11,1033268 6,75401926 6,40688467 9,318961143 4,89859581 6,639904022
+11 Nov 24 20:00 0 0 0 0 0 0 0 0 0 14,28849411 30,32708359 18,0872879 20,30482674 4,720211506 0,6274423 -5,264769077 -14,06392288 -13,22915459 -13,71702003 -15,567173 -7,258654118 -15,95940399 -15,01853848 -12,13228893 -16,29605675 -14,08423042 -15,27380753 -17,80069351 -9,582749367 -18,07290459 -15,72878838 -10,66496181 -14,20188427 -9,008384705 -4,527750015 -4,666615486 2,498230696 -5,370595932 -2,6578269 1,842826843 -1,748653889 0,950788438 -0,652923107 -0,22225 6,072865009 -1,993057728 1,368076921 6,984595776 -1,211576939 -1,133692265 4,067788601 15,45863438 5,492538452 5,89311552 9,762115479 4,884595871 9,606884956 8,555077553 6,634307861 12,21365356 7,489596367 7,054153919 10,18217278 4,073538303 7,194749832
+12 Nov 24 00:00 0 0 0 0 0 0 0 0 0 13,86288071 26,26608849 11,61084461 17,51798058 5,188941956 2,005815506 -3,735038757 -12,41205788 -12,03701878 -11,75624275 -14,50333023 -5,169708729 -14,21824265 -13,44320393 -10,51407719 -15,05185413 -12,08719444 -13,57658195 -16,4918251 -8,76762104 -17,05364227 -15,67976665 -10,16280556 -13,67877674 -9,238232613 -4,565368652 -4,825359344 2,841174841 -4,834475994 -2,486912727 2,758980751 -1,372640729 1,220970869 0,11529126 0,330466032 7,100990295 -1,393378615 1,915961266 7,618825436 -0,459990293 -0,652669907 4,868505001 16,54331017 6,09709692 6,049660206 10,16328144 4,700611591 9,163757324 8,235495567 6,381009579 12,37254429 7,372533798 7,378145695 10,45496082 4,117864132 7,3325634
+12 Nov 24 04:00 0 0 0 0 0 0 0 0 0 13,4372673 9,085718155 0,788252413 34,05919266 28,07091331 -3,574970722 -6,40621376 -14,90736866 -15,03917408 -13,18305874 -15,01557255 -7,410456181 -14,70627117 -14,07366943 -11,31002903 -15,63209629 -12,97363091 -14,70996094 -16,70706749 -9,975776672 -17,10510826 -15,18653393 -11,07518482 -13,58416462 -10,52133083 -5,021291256 -4,88531065 1,84945631 -4,73730135 -1,763844609 1,716601968 -1,153378606 1,701427221 0,625902951 0,99717474 5,819543839 -1,139407754 1,206466079 6,409728527 -0,17295146 -0,845436931 4,626572609 15,29200935 6,238563061 6,21317482 9,76687336 4,570009708 8,762009621 8,089282036 6,331922531 11,51573849 6,635359287 6,455300808 9,198155403 3,638077736 6,204378605
+12 Nov 24 08:00 0 0 0 0 0 0 0 0 0 13,0116539 6,12966013 -0,668699026 25,77629089 15,81444645 -3,420504808 -6,710116386 -14,30579662 -14,51256275 -13,00925255 -14,68630028 -6,700397968 -14,23466015 -14,08349514 -11,03680611 -15,13315487 -12,39372826 -14,44435883 -17,12265968 -9,945301056 -17,27423286 -15,32511616 -10,31757259 -13,16846561 -9,707456589 -4,718029499 -4,07833004 3,148524284 -3,660427332 -1,140815496 3,323262215 0,241475731 2,785262108 1,696417451 1,867407799 7,66513586 0,383126199 2,969670057 8,901981354 1,694291234 0,740854383 6,412534237 16,69325256 7,706223011 7,292038918 11,19370842 6,359505177 9,689515114 9,338504791 8,116146088 13,22295189 8,226951599 7,608776569 10,57718468 4,995708466 6,618145466
+12 Nov 24 12:00 0 0 0 0 0 0 0 0 0 12,58603954 26,71972275 37,78013229 17,82744217 2,104192257 -0,980153799 -3,799384594 -11,82975006 -12,83526897 -11,49659634 -12,9511919 -5,190672874 -12,1700964 -10,30198097 -7,416423321 -10,93990326 -8,403903961 -9,62561512 -12,22578812 -4,708230495 -12,42192268 -9,919153214 -5,153615475 -8,332038879 -6,200673103 -1,283403873 -1,747057676 5,244153976 -1,471192241 0,877653837 5,329230785 1,833076954 4,027904034 2,771076918 2,059173107 7,577596188 -0,136961535 2,338961601 8,389749527 0,530769229 -3,072269201 2,299442291 13,56461525 4,232673168 4,460384846 8,826480865 3,587538481 7,499095917 6,651326656 4,816942215 10,35340405 4,799692631 4,130095959 7,618346214 1,268019199 4,390769005
+12 Nov 24 16:00 0 0 0 0 0 0 0 0 0 12,16042614 25,10507774 19,29542732 19,81743813 0,471368909 -4,45213604 -7,228417397 -15,31187439 -15,94265938 -14,04747581 -15,75642681 -7,509291172 -14,77132034 -13,52132034 -9,615437508 -12,79003906 -9,900621414 -10,62704849 -13,5257864 -5,471466064 -12,98018456 -10,887146 -6,31307745 -9,417524338 -6,864271641 -0,926194131 -1,505029202 4,978096962 -1,763067961 0,42465049 5,14895153 1,080378652 3,344757318 1,293485403 1,057592273 6,734223366 -0,905029118 1,275611639 7,740320206 0,021194179 -2,200155258 4,086883545 14,82681561 4,987650394 4,648806095 9,158612251 3,162223339 7,159388065 6,566203594 4,623941898 10,24265957 4,867407799 4,35974741 7,941504478 1,529999971 3,994805813
+12 Nov 24 20:00 0 0 0 0 0 0 0 0 0 11,73481274 33,82222366 22,59221268 4,404223442 -1,201417446 -8,721378326 -8,90763092 -17,14649582 -17,21548653 -14,63394165 -16,01408768 -7,853990555 -14,76630116 -14,30602932 -9,855184555 -13,93880653 -11,55813599 -11,94054317 -14,85137939 -7,499766827 -15,05998039 -12,73361206 -7,259116173 -11,56881618 -8,456892967 -2,521427155 -2,556883574 3,745155334 -2,987164974 -1,387708783 3,227970839 -0,491242707 0,784650445 -0,140446603 0,259621382 5,325592041 -1,964194179 0,432359219 6,279660225 -2,117465973 -3,104058266 3,00466013 13,50542736 4,632154942 4,314436913 8,098592758 2,927475691 6,703670025 5,964504719 4,374475479 9,720990181 4,796048641 4,280359268 7,310077667 2,166611671 4,012922287
+13 Nov 24 00:00 0 0 0 0 0 0 0 0 0 11,30919933 23,93300247 26,03297997 25,72912598 0,981048524 -7,030990124 -6,839980602 -15,05128193 -14,80366993 -12,24725246 -13,96972847 -5,44866991 -12,80962181 -11,24716473 -7,063456059 -10,92362118 -8,335378647 -8,862902641 -11,58185482 -4,652456284 -12,57512665 -10,90742779 -6,155456543 -9,678874016 -7,286514759 -1,856019378 -2,340698957 3,801252365 -3,872941732 -1,840834975 1,461000085 -2,771427155 -1,983252525 -4,468922615 -4,292106628 1,42432034 -6,498359203 -3,435776711 2,118922234 -5,803329945 -7,557029247 -0,977796078 10,76747513 1,06205821 0,854504824 5,105834961 0,024815533 4,444116592 4,03942728 2,697359324 9,186339378 3,702077627 3,865689278 7,104524612 1,855378628 4,307106972
+13 Nov 24 04:00 0 0 0 0 0 0 0 0 0 10,88358593 27,50067329 25,1344223 22,9242878 -1,818076849 -9,474981308 -10,16603851 -17,64030647 -17,17705917 -14,57401943 -15,78613472 -6,870846272 -14,28273106 -12,68090343 -9,106711388 -12,48792267 -9,463172913 -10,9592886 -12,29165363 -5,545845985 -13,14215374 -11,45898056 -6,816307545 -10,65407753 -7,343153954 -1,993788481 -2,225211382 3,823230743 -4,020076752 -2,463596106 1,054326892 -2,856557846 -1,237807631 -3,392346382 -3,296057701 1,908307672 -5,592673302 -2,926076889 2,949653864 -4,757615566 -5,235961914 1,126134634 12,42732716 2,798749924 2,401499987 7,13909626 1,906153917 6,109634399 5,477288246 4,665942192 10,28251934 5,443692207 5,543307781 9,230884552 3,46261549 5,837115288</textarea>
+    <div class="row">
+      <label>Column name <input type="text" id="xname" value="Position" size="12"></label>
+      <label>Unit <input type="text" id="unit" value="" placeholder="e.g. m/s" size="7"></label>
+      <label><input type="checkbox" id="hidezero" checked> Hide columns that are always 0</label>
+      <button id="load" class="primary">Update chart</button>
+      <span class="msg" id="msg" role="status"></span>
+    </div>
+  </details>
+</div>
+<div id="tip"></div>
+
+<script>
+(function(){
+const $ = id => document.getElementById(id);
+const root = document.documentElement;
+const PAD = {l:96, r:16};
+const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+let rows = [], cols = [], n = 0, vmax = 1, t = 0, hold = 0;
+let playing = !reduce, speed = 1, xname = 'Position', unit = '';
+let hoverIdx = -1, curVals = [], lastStep = -1, heatGeom = null;
+let C = {};
+
+function readTheme(){
+  const cs = getComputedStyle(root);
+  ['--pos','--neg','--ink','--muted','--grid','--panel','--ghost'].forEach(k => C[k] = cs.getPropertyValue(k).trim());
+  C.font = cs.getPropertyValue('--sans').trim();
+}
+function rgb(hex){
+  hex = hex.replace('#','');
+  if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+  const v = parseInt(hex, 16);
+  return [v >> 16 & 255, v >> 8 & 255, v & 255];
+}
+
+function parse(text){
+  const out = [];
+  text.split(/\r?\n/).forEach(line => {
+    if (!line.trim()) return;
+    let label, rest;
+    if (line.indexOf('\t') >= 0) { const f = line.split('\t'); label = f[0].trim(); rest = f.slice(1); }
+    else if (line.indexOf(';') >= 0) { const f = line.split(';'); label = f[0].trim(); rest = f.slice(1); }
+    else {
+      const m = line.match(/^\s*(.*?\d{1,2}:\d{2}(?::\d{2})?)\s+(.*)$/);
+      if (m) { label = m[1]; rest = m[2].split(/\s+/); }
+      else { const f = line.trim().split(/\s+/); label = f[0]; rest = f.slice(1); }
+    }
+    const vals = rest.map(s => s.trim()).filter(s => s !== '').map(s => Number(s.replace(',', '.')));
+    if (vals.length && vals.every(v => isFinite(v))) out.push({label, vals});
+  });
+  return out;
+}
+function niceCeil(x){
+  const e = Math.pow(10, Math.floor(Math.log10(x)));
+  const f = x / e;
+  const s = f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 4 ? 4 : f <= 5 ? 5 : 10;
+  return s * e;
+}
+function shortLabel(s){
+  const m = s.match(/^(\d{1,2})\s+([A-Za-z]{3,})\s+\d{2,4}\s+(\d{1,2}:\d{2})/);
+  return m ? `${m[1]} ${m[2].slice(0,3)} ${m[3]}` : (s.length > 13 ? s.slice(0, 13) : s);
+}
+function num(v){ const r = Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(1); return (v > 0 ? '+' : '') + r; }
+function fmt(v){ return num(v) + (unit ? ' ' + unit : ''); }
+
+function load(){
+  const parsed = parse($('raw').value);
+  if (parsed.length < 2) { $('msg').textContent = 'Paste at least two rows: a time, then numbers.'; return; }
+  const k = Math.max(...parsed.map(r => r.vals.length));
+  parsed.forEach(r => { while (r.vals.length < k) r.vals.push(0); });
+  const hide = $('hidezero').checked;
+  const c = [];
+  for (let j = 0; j < k; j++) if (!hide || parsed.some(r => r.vals[j] !== 0)) c.push(j);
+  if (!c.length) { $('msg').textContent = 'Every value is 0. Untick "Hide columns that are always 0" or paste other data.'; return; }
+  rows = parsed; cols = c; n = rows.length;
+  let mx = 0;
+  rows.forEach(r => cols.forEach(j => { mx = Math.max(mx, Math.abs(r.vals[j])); }));
+  vmax = niceCeil(mx || 1);
+  xname = $('xname').value.trim() || 'Position';
+  unit = $('unit').value.trim();
+  const hidden = k - cols.length;
+  $('msg').textContent = `Loaded ${n} times and ${k} columns` + (hidden ? ` (${hidden} empty columns hidden)` : '') + '.';
+  $('slider').max = n - 1;
+  t = 0; hold = 0; lastStep = -1;
+  $('lmin').textContent = fmt(-vmax);
+  $('lmax').textContent = fmt(vmax);
+}
+
+function valuesAt(tt){
+  const i = Math.max(0, Math.min(n - 1, Math.floor(tt)));
+  const j = Math.min(n - 1, i + 1);
+  let f = Math.max(0, Math.min(1, tt - i));
+  f = f * f * (3 - 2 * f);
+  const a = rows[i].vals, b = rows[j].vals;
+  return cols.map(c => a[c] + (b[c] - a[c]) * f);
+}
+
+function fit(c, h){
+  const d = window.devicePixelRatio || 1;
+  const w = c.clientWidth;
+  const W = Math.round(w * d), H = Math.round(h * d);
+  if (c.width !== W || c.height !== H) { c.width = W; c.height = H; c.style.height = h + 'px'; }
+  const ctx = c.getContext('2d');
+  ctx.setTransform(d, 0, 0, d, 0, 0);
+  return {ctx, w, h};
+}
+
+function xLabels(ctx, w, y, cw){
+  const k = cols.length;
+  const every = Math.max(1, Math.ceil(k / Math.max(1, (w - PAD.l - PAD.r) / 30)));
+  ctx.fillStyle = C['--muted'];
+  ctx.font = `12px ${C.font}`;
+  ctx.textBaseline = 'top';
+  ctx.textAlign = 'center';
+  for (let i = 0; i < k; i++) if (i % every === 0) ctx.fillText(String(cols[i] + 1), PAD.l + (i + .5) * cw, y);
+  ctx.textAlign = 'right';
+  ctx.fillText(xname, PAD.l - 10, y);
+}
+
+function drawProfile(vals, prev){
+  const H = window.innerWidth < 560 ? 240 : 300;
+  const {ctx, w, h} = fit($('profile'), H);
+  ctx.clearRect(0, 0, w, h);
+  const top = 10, bot = h - 30, ph = bot - top, pw = w - PAD.l - PAD.r, k = cols.length, cw = pw / k;
+  const Y = v => top + (1 - (v + vmax) / (2 * vmax)) * ph;
+  ctx.font = `12px ${C.font}`;
+  ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+  for (let s = -4; s <= 4; s++) {
+    const v = s * vmax / 4, y = Math.round(Y(v)) + .5;
+    ctx.strokeStyle = s === 0 ? C['--muted'] : C['--grid'];
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(w - PAD.r, y); ctx.stroke();
+    ctx.fillStyle = C['--muted'];
+    ctx.fillText((v > 0 ? '+' : '') + (+v.toFixed(2)), PAD.l - 10, y);
+  }
+  const bw = Math.max(1, cw * .72), y0 = Y(0);
+  for (let i = 0; i < k; i++) {
+    const v = vals[i], x = PAD.l + i * cw + (cw - bw) / 2, y1 = Y(v);
+    ctx.fillStyle = v >= 0 ? C['--pos'] : C['--neg'];
+    ctx.globalAlpha = hoverIdx < 0 || hoverIdx === i ? 1 : .55;
+    ctx.fillRect(x, Math.min(y0, y1), bw, Math.max(1, Math.abs(y1 - y0)));
+  }
+  ctx.globalAlpha = .6;
+  ctx.setLineDash([4, 3]);
+  ctx.strokeStyle = C['--ghost']; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  prev.forEach((v, i) => { const x = PAD.l + (i + .5) * cw, y = Y(v); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+  ctx.stroke();
+  ctx.setLineDash([]); ctx.globalAlpha = 1;
+  xLabels(ctx, w, bot + 8, cw);
+}
+
+function drawHeat(){
+  const rh = n > 40 ? Math.max(5, Math.floor(600 / n)) : 16;
+  const top = 2, h = top + n * rh + 28;
+  const {ctx, w} = fit($('heat'), h);
+  ctx.clearRect(0, 0, w, h);
+  const pw = w - PAD.l - PAD.r, k = cols.length, cw = pw / k;
+  const P = rgb(C['--pos']), N = rgb(C['--neg']), M = rgb(C['--panel']);
+  for (let r = 0; r < n; r++) {
+    const vals = rows[r].vals;
+    for (let i = 0; i < k; i++) {
+      const v = vals[cols[i]];
+      const e = v >= 0 ? P : N;
+      const a = Math.pow(Math.min(1, Math.abs(v) / vmax), .7);
+      ctx.fillStyle = `rgb(${M[0] + (e[0] - M[0]) * a | 0},${M[1] + (e[1] - M[1]) * a | 0},${M[2] + (e[2] - M[2]) * a | 0})`;
+      const x0 = Math.floor(PAD.l + i * cw), x1 = Math.floor(PAD.l + (i + 1) * cw);
+      ctx.fillRect(x0, top + r * rh, Math.max(1, x1 - x0), rh);
+    }
+  }
+  const cr = Math.round(t);
+  const every = Math.max(1, Math.ceil(14 / rh));
+  ctx.font = `12px ${C.font}`;
+  ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+  for (let r = 0; r < n; r++) {
+    if (r !== cr && r % every !== 0) continue;
+    if (r !== cr && Math.abs(r - cr) < every) continue;
+    ctx.fillStyle = r === cr ? C['--ink'] : C['--muted'];
+    ctx.font = (r === cr ? '600 ' : '') + `12px ${C.font}`;
+    ctx.fillText(shortLabel(rows[r].label), PAD.l - 10, top + r * rh + rh / 2);
+  }
+  if (hoverIdx >= 0) {
+    ctx.strokeStyle = C['--ink']; ctx.globalAlpha = .45; ctx.lineWidth = 1;
+    ctx.strokeRect(Math.floor(PAD.l + hoverIdx * cw) + .5, top + .5, Math.max(1, Math.floor(cw)) - 1, n * rh - 1);
+    ctx.globalAlpha = 1;
+  }
+  ctx.strokeStyle = C['--ink']; ctx.lineWidth = 2;
+  ctx.strokeRect(PAD.l - 1, top + cr * rh, pw + 2, rh);
+  const yy = top + (t + .5) * rh;
+  ctx.fillStyle = C['--ink'];
+  ctx.beginPath(); ctx.moveTo(w - PAD.r + 3, yy); ctx.lineTo(w - 2, yy - 5); ctx.lineTo(w - 2, yy + 5); ctx.closePath(); ctx.fill();
+  ctx.font = `12px ${C.font}`;
+  xLabels(ctx, w, top + n * rh + 8, cw);
+  heatGeom = {top, rh, cw};
+}
+
+function updateText(){
+  const cr = Math.round(t);
+  if (cr === lastStep) return;
+  lastStep = cr;
+  $('clock').textContent = rows[cr].label;
+  $('stepno').textContent = `Step ${cr + 1} of ${n}`;
+  const v = cols.map(c => rows[cr].vals[c]);
+  let hi = 0, lo = 0;
+  v.forEach((x, i) => { if (x > v[hi]) hi = i; if (x < v[lo]) lo = i; });
+  const mean = v.reduce((a, b) => a + b, 0) / v.length;
+  const parts = [];
+  if (v[hi] > 0) parts.push(`Strongest positive <b>${fmt(v[hi])}</b> at ${xname.toLowerCase()} ${cols[hi] + 1}`);
+  if (v[lo] < 0) parts.push(`Strongest negative <b>${fmt(v[lo])}</b> at ${xname.toLowerCase()} ${cols[lo] + 1}`);
+  parts.push(`Average <b>${fmt(mean)}</b>`);
+  $('facts').innerHTML = parts.map(p => `<span>${p}</span>`).join('');
+}
+
+let last = performance.now();
+function frame(now){
+  const dt = Math.min(.05, (now - last) / 1000);
+  last = now;
+  if (n) {
+    readTheme();
+    if (playing) {
+      if (t >= n - 1) { hold += dt; if (hold > 1.4) { t = 0; hold = 0; } }
+      else t = Math.min(n - 1, t + dt * speed);
+      $('slider').value = t;
+    }
+    curVals = valuesAt(t);
+    drawProfile(curVals, valuesAt(Math.max(0, t - 1)));
+    drawHeat();
+    updateText();
+  }
+  requestAnimationFrame(frame);
+}
+
+function setPlaying(p){ playing = p; $('play').textContent = p ? 'Pause' : 'Play'; }
+function jump(step){ setPlaying(false); t = Math.max(0, Math.min(n - 1, step)); $('slider').value = t; }
+
+$('play').addEventListener('click', () => { if (!playing && t >= n - 1) t = 0; setPlaying(!playing); });
+$('prev').addEventListener('click', () => jump(Math.round(t) - 1));
+$('next').addEventListener('click', () => jump(Math.round(t) + 1));
+$('slider').addEventListener('input', e => { setPlaying(false); t = +e.target.value; });
+$('speed').addEventListener('change', e => { speed = +e.target.value; });
+$('load').addEventListener('click', () => { load(); });
+document.addEventListener('keydown', e => {
+  const tag = (e.target.tagName || '').toLowerCase();
+  if (tag === 'textarea' || tag === 'input' || tag === 'select') return;
+  if (e.key === ' ') { e.preventDefault(); $('play').click(); }
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); jump(Math.round(t) - 1); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); jump(Math.round(t) + 1); }
+});
+
+const tip = $('tip');
+function showTip(html, e){
+  tip.innerHTML = html;
+  tip.style.opacity = 1;
+  const x = Math.min(e.clientX + 14, window.innerWidth - tip.offsetWidth - 8);
+  const y = Math.max(8, e.clientY - tip.offsetHeight - 10);
+  tip.style.transform = `translate(${x}px, ${y}px)`;
+}
+function hideTip(){ tip.style.opacity = 0; hoverIdx = -1; }
+function colAt(canvas, e){
+  const r = canvas.getBoundingClientRect();
+  const cw = (r.width - PAD.l - PAD.r) / cols.length;
+  const i = Math.floor((e.clientX - r.left - PAD.l) / cw);
+  return {i, y: e.clientY - r.top};
+}
+$('profile').addEventListener('pointermove', e => {
+  const {i} = colAt($('profile'), e);
+  if (i < 0 || i >= cols.length) { hideTip(); return; }
+  hoverIdx = i;
+  showTip(`${xname} ${cols[i] + 1}<br><b>${fmt(curVals[i])}</b>`, e);
+});
+$('profile').addEventListener('pointerleave', hideTip);
+$('heat').addEventListener('pointermove', e => {
+  if (!heatGeom) return;
+  const {i, y} = colAt($('heat'), e);
+  const r = Math.floor((y - heatGeom.top) / heatGeom.rh);
+  if (i < 0 || i >= cols.length || r < 0 || r >= n) { hideTip(); $('heat').style.cursor = 'default'; return; }
+  $('heat').style.cursor = 'pointer';
+  hoverIdx = i;
+  showTip(`${rows[r].label}<br>${xname} ${cols[i] + 1}: <b>${fmt(rows[r].vals[cols[i]])}</b>`, e);
+});
+$('heat').addEventListener('pointerleave', hideTip);
+$('heat').addEventListener('click', e => {
+  if (!heatGeom) return;
+  const y = e.clientY - $('heat').getBoundingClientRect().top;
+  const r = Math.floor((y - heatGeom.top) / heatGeom.rh);
+  if (r >= 0 && r < n) jump(r);
+});
+
+setPlaying(playing);
+load();
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
